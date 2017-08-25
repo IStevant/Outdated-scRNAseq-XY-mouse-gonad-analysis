@@ -1,4 +1,4 @@
-source("handcraft_seurat-like_20161123.R")
+source("170824_functions.R")
 
 ###########################################
 #                                         #
@@ -31,7 +31,6 @@ male_stagePalette <- c(
 
 males_data <- log(males+1)
 
-tf_list <- read.csv(file="../data/mart_export_TF_GO0003700.txt", header=FALSE)
 
 ###########################################
 #                                         #
@@ -68,7 +67,6 @@ ggplot(gene_per_cell_males, aes(geneNb)) +
 	geom_histogram(color="black", fill="grey") +
 	theme_bw() +
 	labs(x = "Detected genes", y="Cell count")+
-	# ggtitle(paste("Median=", median(gene_per_cell_males$geneNb)," genes per cell", sep="")) +
 	theme(
 		axis.text=element_text(size=16),
 		axis.title=element_text(size=16),
@@ -227,8 +225,12 @@ plot_heatmap(
 )
 
 
+###########################################
+#                                         #
+#        GO terms of the DE genes         #
+#                                         #
+###########################################
 
-# library("ReactomePA")
 library("clusterProfiler")
 library("org.Mm.eg.db")
 library("clusterProfiler")
@@ -309,10 +311,6 @@ markerGenes <- c(
 	"Esam"
 )
 
-
-
-
-
 gene_subset <- as.matrix(log(males[rownames(males) %in% markerGenes,]+1))
 
 cl1_gene_subset <- gene_subset[, colnames(gene_subset) %in% names(male_cluster_name[male_cluster_name=="Progenitors"])]
@@ -368,7 +366,7 @@ male_clustering[
 
 ###########################################
 #                                         #
-#               DM Analysis               #
+#            Diffusion maps               #
 #                                         #
 ###########################################
 
@@ -448,128 +446,10 @@ rgl.postscript( "../graph/male_dm_lineages_new_cols.svg", fmt = "svg", drawText 
 
 
 
-
-
 male_pseudotime <- get_pseudotime(male_lineage, wthres=0.9)
 rownames(male_pseudotime) <- colnames(males)
 
 
-
-gene_list <- c(
-	"Amh",
-	"Dhh",
-	"Sox9",
-	"Sry",
-	"Nr0b1",
-	"Gadd45g",
-	"Mro",
-	"Fgf9",
-	"Hsd17b1",
-	"Wt1",
-	"Arx",
-	"Pdgfra",
-	"Wnt5a",
-	"Insl3",
-	"Cyp11a1",
-	"Hsd3b1",
-	"Nr2f2",
-	"Sfrp1",
-	"Foxp1",
-	"Rspo1",
-	"Wnt4",
-	"Foxl2",
-	"Actb",
-	'Nr5a1',
-	"eGFP"
-)
-
-
-gene_list <- c(
-	"Hoxa2",
-	"Hoxa5",
-	"Hoxa7",
-	"Hoxb6",
-	"Hoxb7",
-	"Hoxb9",
-	"Hoxc8",
-	"Foxc1",
-	"Foxc2",
-	"Foxd2",
-	"Sall1",
-	"Sall4",
-	"Trim71",
-	"Lin28a",
-	"Tbx18"
-)
-
-
-plot_genes <- function(genes){
-	for (gene in genes){
-		print(gene)
-		plot_gene_per_lineage(
-			rpkm_matrix=males, 
-			pseudotime=male_pseudotime, 
-			gene=gene, 
-			stages=male_stages, 
-			clusters=male_cluster_name, 
-			stage_colors=male_stagePalette,
-			cluster_colors=male_clusterPalette
-		)
-	}
-}
-
-
-plot_genes_tsne <- function(genes){
-	for (gene in genes){
-		print(gene)
-		tsne_gene_exp(
-			male_t_sne,
-			gene, 
-			males
-		)
-	}
-}
-
-
-
-
-
-genes <- c(
-	"Rspo1",
-	"Rspo2",
-	"Rspo3",
-	"Rspo4",
-	"Lgr4",
-	"Lgr5",
-	"Lgr6",
-	"Egfr",
-	"Erbb2",
-	"Erbb3",
-	"Erbb4",
-	"Nrg1",
-	"Nrg2",
-	"Nrg3",
-	"Nrg4"
-	)
-
-
-
-pdf("../graph/chaboissier_Rspo+Nrg_male.pdf")
-	plot_genes(genes)
-dev.off()
-
-
-
-
-pdf("../graph/male_genes_tsne_e10.pdf", width=4, height=4)
-	plot_genes_tsne(gene_list)
-dev.off()
-
-
-
-pdf("../graph/male_genes_pseudotime_example_2.pdf", width=5, height=4)
-
-male_clusterPalette2 <- c("#009900", "#8dfaff", "#457cff" )
 
 plot_gene_per_lineage(
 	rpkm_matrix=males, 
@@ -603,59 +483,6 @@ plot_gene_per_lineage(
 	cluster_colors=male_clusterPalette2
 )
 
-dev.off()
-
-
-
-male_clusterPalette <- c(
-	"#457cff", 
-	"#8ae400", 
-	"#00c5ec", 
-	"#009900",
-	"#8dfaff"
-)
-
-
-
-male_clusterPalette2 <- c("#009900", "#8dfaff", "#457cff" )
-
-
-plot_gene_per_lineage(
-	rpkm_matrix=males, 
-	pseudotime=male_pseudotime, 
-	gene="Sox11",
-	stages=male_stages, 
-	clusters=male_cluster_name, 
-	stage_colors=male_stagePalette,
-	cluster_colors=male_clusterPalette
-)
-
-
-
-gene_list <- c(
-	"Nr5a1",
-	"Ctnnal1",
-	"Ptgr1",
-	"Dmrt1",
-	"Cst8",
-	"Runx1t1",
-	"Sfrp1",
-	"Pbx1",
-	"Sox11",
-	"Wt1",
-	"Arx",
-	"Pdgfra",
-	"Gli1",
-	"Tcf21"
-)
-
-
-pdf("../graph/male_interesting_profiles.pdf", width=12, height=4)
-	plot_genes(gene_list)
-dev.off()
-
-
-
 
 ###########################################
 #                                         #
@@ -676,7 +503,6 @@ write.csv(male_lineage1_sig_gene_pseudoT, file="male_lineage1_gene_var_genes_pse
 male_lineage1_sig_gene_pseudoT <- read.csv(file="male_lineage1_gene_var_genes_pseudotime_df_4.csv", row.names=1)
 
 
-
 tiff("../graph/male_lineage1_var_genes_qval_0.05_df_4_new_cols.tif", res = 300, height = 20, width = 17, units = 'cm')
 
 male_lineage1_clustering <- get_gene_clustering(
@@ -695,47 +521,6 @@ write.csv(male_lineage1_clustering, file="male_lineage1_gene_clustering_qval_0.0
 male_lineage1_clustering <- data.frame(genes=rownames(male_lineage1_clustering), clusters=male_lineage1_clustering)
 tf_dynamics <- male_lineage1_clustering[rownames(male_lineage1_clustering) %in% tf_list$V1,]
 write.csv(tf_dynamics, file="male_lineage1_gene_clustering_qval_0.05_TF_df_4.csv")
-
-
-
-library("ReactomePA")
-library("clusterProfiler")
-library("org.Mm.eg.db")
-library("clusterProfiler")
-library("GOSemSim")
-
-
-# Sertoli lineage
-
-male_lineage1_clustering <- read.csv(file="male_lineage1_gene_clustering_qval_0.01.csv", row.names=1)
-male_lineage1_clustering <- data.frame(clusters=male_lineage1_clustering, genes=rownames(male_lineage1_clustering))
-
-lineage1_genes <- rownames(male_lineage1_clustering)
-
-#convert gene ID into entrez genes
-lineage1_entrez_genes <- bitr(lineage1_genes, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Mm.eg.db")
-male_lineage1_clustering <- male_lineage1_clustering[male_lineage1_clustering$genes %in% lineage1_entrez_genes$SYMBOL,]
-male_lineage1_clustering <- data.frame(entrez_genes=lineage1_entrez_genes$ENTREZID, clusters=male_lineage1_clustering)
-lineage1_gene_clusters <- split(male_lineage1_clustering$entrez_genes, male_lineage1_clustering$clusters.Gene_Clusters)
-
-lineage1_formula_res <- compareCluster(
-	entrez_genes~clusters.Gene_Clusters, 
-	data=male_lineage1_clustering, fun="enrichGO", 
-	OrgDb="org.Mm.eg.db",
-    ont           = "BP",
-    pAdjustMethod = "BH",
-    pvalueCutoff  = 0.01,
-    qvalueCutoff  = 0.05
-)
-
-lineage1_ego <- simplify(
-	lineage1_formula_res, 
-	cutoff=0.4, 
-	by="p.adjust", 
-	select_fun=min
-)
-
-dotplot(lineage1_ego, showCategory=5)
 
 
 #############################################################
@@ -798,10 +583,6 @@ write.csv(tf_dynamics, file="male_lineage3_gene_clustering_qval_0.05_df_4.csv")
 
 
 
-
-
-
-# library("ReactomePA")
 library("org.Mm.eg.db")
 library("clusterProfiler")
 library("GOSemSim")
@@ -866,16 +647,6 @@ dev.off()
 ###########################################
 
 
-
-# Faire DE :
-# lineage 1+3 vs lineage 1
-# lineage 1+3 vs lineage 3
-# lineage 1 vs lineage 3
-
-# Récupérer gènes qui sont dans lineages 1+3 et 1 mais pas 3
-# Récupérer gènes qui sont dans 1+3 et 3 mais pas 1
-
-
 male_lineage1_clustering <- read.csv(file="male_lineage1_gene_clustering_qval_0.05_df_4.csv", row.names=1)
 male_lineage3_clustering <- read.csv(file="male_lineage3_gene_clustering_qval_0.05_df_4.csv", row.names=1)
 
@@ -914,7 +685,6 @@ lineages[lineages=="1_2_3"] <- "1_3"
 lineages[lineages=="NA_2_3"] <- 3
 lineages[lineages=="1_NA_3"] <- "1_3"
 lineages[lineages=="1_2_NA"] <- 1
-# lineages <- lineages[- grep("NA_NA_NA", lineages[,2]),]
 
 lineages_all <- paste("l", lineages$lineages, sep="")
 names(lineages_all) <- lineages[,1]
@@ -933,12 +703,10 @@ lineages <- lineages[- grep("lNA_NA_NA", lineages)]
 lineages_1_3 <- lineages[- grep("l2", lineages)]
 lineages_1_3 <- lineages_1_3 [- grep("l1_3", lineages_1_3)]
 
-# genes_pseudoT <- genes_pseudoT[de_genes_pseudotime, names(lineages_1_3)]
 genes_pseudoT <- genes_pseudoT[, names(lineages_1_3)]
 
-# Re-detect how many cells express each genes in the subset of cells
 genes_pseudoT <- detectGenes(genes_pseudoT, min_expr = 5)
-# Remove genes expressed in less than 10 cells
+
 genes_pseudoT <- genes_pseudoT[fData(genes_pseudoT)$num_cells_expressed >= 30, ]
 
 
@@ -998,8 +766,6 @@ l3_cells_pseudotime <- names(l3_cells_pseudotime[order(l3_cells_pseudotime)])
 l3_cells <- l3_cells[order(match(l3_cells, l3_cells_pseudotime))]
 
 
-
-
 common_cells_matrix <- males[de_genes, common_cells]
 common_cells_matrix <- common_cells_matrix[,order(match(colnames(common_cells_matrix), common_cells))]
 
@@ -1011,8 +777,6 @@ l1_common_cells_matrix <- common_cells_matrix
 colnames(l1_common_cells_matrix) <- paste(colnames(l1_common_cells_matrix), "l1", sep="_")
 
 l3_common_cells_matrix <- common_cells_matrix[,ncol(common_cells_matrix):1]
-# colnames(l3_common_cells_matrix) <- paste(colnames(l3_common_cells_matrix), "l3", sep="_")
-
 
 l1_cells_matrix <- males[de_genes, l1_cells]
 l1_cells_matrix <- l1_cells_matrix[,order(match(colnames(l1_cells_matrix), l1_cells))]
@@ -1066,232 +830,26 @@ annotation_colors <- list(
 	)
 )
 
-	cold <- colorRampPalette(c('#f7fcf0','#41b6c4','#253494','#081d58','#081d58'))
-	warm <- colorRampPalette(c('#ffffb2','#fecc5c','#e31a1c','#800026','#800026'))
-	mypalette <- c(rev(cold(15)), warm(16))
-	breaksList = seq(-3, 3, by = 0.2)
+cold <- colorRampPalette(c('#f7fcf0','#41b6c4','#253494','#081d58','#081d58'))
+warm <- colorRampPalette(c('#ffffb2','#fecc5c','#e31a1c','#800026','#800026'))
+mypalette <- c(rev(cold(15)), warm(16))
+breaksList = seq(-3, 3, by = 0.2)
 
 
-
-pdf("../graph/heatmap_DE_genes_sertoli_progenitors_v2.pdf", height=4, width=7)
 
 gene_clustering <- pheatmap(
 	data_heatmap, 
  	scale="row",
  	kmeans_k=15,
- 	# breaks=c(-0.5, 0, 0.5),
  	gaps_col=length(c(colnames(l3_cells_matrix), colnames(l3_common_cells_matrix))),
 	show_colnames=FALSE, 
-	# show_rownames=FALSE, 
 	cluster_cols=FALSE,
-	# cluster_rows=FALSE,
-	# cutree_rows=6,
 	clustering_method="ward.D2",
 	annotation_col=annotation_col,
 	annotation_colors=annotation_colors,
-	# color=viridis(8)
 	color=mypalette,
 	breaks=breaksList
 )
 
-dev.off()
 
 write.csv(gene_clustering$kmeans$cluster, file="male_lineage3_lineage1_DE_gene_pseudotime_qval_0.0001_gene_clustering_kmeans_k15_scaled.csv")
-
-
-###########################################
-#                                         #
-#            cluster + stages             #
-#                                         #
-###########################################
-
-
-
-male_clustering[
-	which(
-		sapply(strsplit(names(male_clustering), "_"), `[`, 1)=="E10.5" & male_clustering=="XY_1"
-	)] <- "XY_1_E10.5"
-
-male_clustering[
-	which(
-		sapply(strsplit(names(male_clustering), "_"), `[`, 1)=="E16.5" & male_clustering=="XY_1"
-	)] <- "XY_1_E16.5"
-
-
-
-male_clustering[
-	which(
-		male_clustering=="XY_3"
-	)] <- "XY_1"
-
-
-
-male_clusterPalette <- rainbow(length(unique(male_clustering)), s = 0.5)
-
-
-
-plot_genes <- function(genes){
-	for (gene in genes){
-		plot_gene_per_lineage(
-		rpkm_matrix=males, 
-		pseudotime=male_pseudotime, 
-		gene=gene, 
-		shape_cond=male_cluster_name,
-		color_cond=male_stages,
-		colours=male_stagePalette
-	)
-
-	}
-}
-
-genes <- c(
-	"Rspo1",
-	"Rspo2",
-	"Rspo3",
-	"Rspo4",
-	"Lgr4",
-	"Lgr5",
-	"Lgr6",
-	"Egfr",
-	"Erbb2",
-	"Erbb3",
-	"Erbb4",
-	"Nrg1",
-	"Nrg2",
-	"Nrg3",
-	"Nrg4"
-	)
-
-
-
-pdf("../graph/chaboissier_Rspo+Nrg_male.pdf")
-	plot_genes(genes)
-dev.off()
-
-
-
-###########################################
-#                                         #
-#               iGraph Corr               #
-#                                         #
-###########################################
-
-library("igraph")
-library("qgraph")
-
-
-cor_mat <- cor(males_data)
-
-cor_mat[ cor_mat < 0.5 ] <- 0
-diag(cor_mat) <- 0
-graph <- graph.adjacency(cor_mat, weighted=TRUE, mode="lower")
-
-graph <- delete.edges(graph, E(graph)[ weight < 0.5 ])
-
-bad.vs<-V(graph)[degree(graph) == 0] 
-
-# remove isolated nodes
-graph <-delete.vertices(graph, bad.vs)
-
-
-
-png("../graph/correlation_graph_male_0.5_var_genes_clusters.png", width = 1000, height = 1000,
-    units = "px")
-plot.igraph(
-	graph, 
-	vertex.color=as.factor(male_clustering), 
-	palette=male_clusterPalette,
-	# layout=layout.fruchterman.reingold(graph, niter=1000), 
-	vertex.size = 4, 
-	vertex.label.cex = 0.001, 
-	vertex.color = "white", 
-	)
-
-dev.off()
-
-
-
-png("../graph/correlation_graph_male_0.5_var_genes_stages.png", width = 1000, height = 1000,
-    units = "px")
-plot.igraph(
-	graph, 
-	vertex.color=as.factor(male_stages), 
-	palette=male_stagePalette,
-	# layout=layout.fruchterman.reingold(graph, niter=1000), 
-	vertex.size = 4, 
-	vertex.label.cex = 0.001, 
-	vertex.color = "white", 
-	)
-
-dev.off()
-
-
-###########################################
-#                                         #
-#               iGraph Corr               #
-#                                         #
-###########################################
-
-library("igraph")
-library("qgraph")
-
-
-tf_dynamics <- read.csv(file="male_lineage1_gene_clustering_qval_0.01_TF.csv", row.names=1)
-
-lineage1 <- names(male_pseudotime[!is.na(male_pseudotime[,1]),1])
-cellType <- male_cluster_name[names(male_cluster_name) %in% lineage1]
-
-
-males_TF <- t(log(males[rownames(males) %in% rownames(tf_dynamics),lineage1]+1))
-
-cellNb <- males_TF
-cellNb[cellNb > 0] <- 1
-males_TF <- males_TF[,colnames(cellNb[,colSums(cellNb)>10])]
-
-
-males_TF <- males_TF[,order(colnames(males_TF))]
-
-cor_mat <- cor(males_TF)
-
-cor_mat[ cor_mat < 0.24 ] <- 0
-diag(cor_mat) <- 0
-graph <- graph.adjacency(cor_mat, weighted=TRUE, mode="lower")
-
-graph <- delete.edges(graph, E(graph)[ weight < 0.24 ])
-
-bad.vs<-V(graph)[degree(graph) <= 1]
-
-# remove isolated nodes
-graph <-delete.vertices(graph, bad.vs)
-
-male_genesPalette <- rainbow(length(unique(tf_dynamics[V(graph)$name,2])), s = 0.6)
-
-# png("../graph/correlation_graph_male_0.5_var_genes_clusters.png", width = 1000, height = 1000,
-#     units = "px")
-plot.igraph(
-	graph, 
-	vertex.color=as.factor(tf_dynamics[V(graph)$name,2]), 
-	palette=male_genesPalette,
-	# layout=layout.fruchterman.reingold(graph, niter=1000), 
-	vertex.size = 12, 
-	vertex.label.cex = 0.5
-	)
-
-# dev.off()
-
-
-
-png("../graph/correlation_graph_male_0.5_var_genes_stages.png", width = 1000, height = 1000,
-    units = "px")
-plot.igraph(
-	graph, 
-	vertex.color=as.factor(male_stages), 
-	palette=male_stagePalette,
-	# layout=layout.fruchterman.reingold(graph, niter=1000), 
-	vertex.size = 4, 
-	vertex.label.cex = 0.001, 
-	vertex.color = "white", 
-	)
-
-dev.off()
-
