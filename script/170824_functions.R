@@ -20,7 +20,17 @@ library("rgl")
 library("scatterplot3d")
 library("made4")
 library("pheatmap")
+library("matrixStats")
+library("statmod")
+library("FactoMineR")
+library("jackstraw")
+library("ReactomePA")
+library("org.Mm.eg.db")
+library("clusterProfiler")
+library("GOSemSim")
+library("ggpubr")
 
+# Pre-define 3D graph window size
 r3dDefaults$windowRect <- c(0,50, 700, 700)
 
 ###########################################
@@ -29,62 +39,50 @@ r3dDefaults$windowRect <- c(0,50, 700, 700)
 #                                         #
 ###########################################
 
-evenbins <- function(x, bin.count=10, order=T) {
-    bin.size <- rep(length(x) %/% bin.count, bin.count)
-    bin.size <- bin.size + ifelse(1:bin.count <= length(x) %% bin.count, 1, 0)
-    bin <- rep(1:bin.count, bin.size)
-    return(factor(bin, levels=1:bin.count, ordered=order))
-}
-
-
-getMostVarGenes <- function(data=data,binNb=binNb,zScore=zScore){
+getMostVarGenes <- function(data=data, fitThr=1.5){
+	# Ref: doi:10.1038.nmeth.2645
 	data_no0 <- as.matrix(
-		data[log(rowSums(data)+1)>1,]
-		)
-	medianGeneExp <- rowMedians(data_no0)
-	names(medianGeneExp)<- rownames(data_no0)
-	orderedMedianGeneExp <- medianGeneExp[order(medianGeneExp)]
-	geneBin <- evenbins(orderedMedianGeneExp, binNb)
-	varGenes <- vector('character')
-
-	for (bin in 1:binNb){
-		binGeneName <- names(orderedMedianGeneExp[geneBin==bin])
-		geneBinData <- data_no0[binGeneName,]
-		meanBinExp <- rowMeans(geneBinData)
-		varBinExp <- rowVars(geneBinData)
-		dispBinVar <- log((varBinExp/meanBinExp)+1)
-		z.scores <- lapply(dispBinVar,function(x)(x-mean(dispBinVar))/sd(dispBinVar))
-		varGenes <- c(varGenes, names(z.scores[z.scores>zScore]))
-	}
-
-	varGenes <- unique(varGenes)
-	print(
-		paste(
-			length(varGenes),
-			"selected genes",
-			sep=" "
-		)
+		data[rowSums(data)>0,]
 	)
 
-	meanGeneExp <- log(rowMeans(data_no0)+1)
-	sqrtCoefVar <- sqrt(
-		rowSds(data_no0)/rowMeans(data_no0)
-	)
+	meanGeneExp <- rowMeans(data_no0)
+	names(meanGeneExp)<- rownames(data_no0)
+	varGenes <- rowVars(data_no0)
+	cv2 <- varGenes / meanGeneExp^2
+ 
+	minMeanForFit <- unname(quantile(meanGeneExp[which(cv2 > .3 ) ], .15 ))
+ 	minMeanForFit <- 1
 
-	gene_color <- meanGeneExp
-	gene_color[gene_color>=0] <- "#595959"
-	gene_color[varGenes] <- "#5a9ca9"
+	useForFit <- meanGeneExp >= minMeanForFit
+	fit <- glmgam.fit( cbind( a0 = 1, a1tilde = 1/meanGeneExp[useForFit] ), cv2[useForFit] )
 
+	a0 <- unname( fit$coefficients["a0"] )
+	a1 <- unname( fit$coefficients["a1tilde"])
+ 
+	fit_genes <- names(meanGeneExp[useForFit])
+	cv2_fit_genes <- cv2[useForFit]
+	fitModel <- fit$fitted.values
+	names(fitModel) <- fit_genes
+	HVGenes <- fitModel[cv2_fit_genes>fitModel*fitThr]
+	print(length(HVGenes))
+
+	plot_meanGeneExp <- log10(meanGeneExp+1)
+	plot_cv2 <- log10(cv2+1)
+ 
 	plotData <-  data.frame(
-		x=meanGeneExp, 
-		y=sqrtCoefVar,
-		gene_col=gene_color 
-		)
-	p <- ggplot(plotData) + 
-	geom_point(aes(x,y, color=(gene_col))) + 
+		x=plot_meanGeneExp[useForFit],
+		y=plot_cv2[useForFit],
+		fit=log10(fit$fitted.values+1),
+		HVGenes=log10((fit$fitted.values*fitThr)+1)
+	)
+ 
+	p <- ggplot(plotData, aes(x,y)) +
+	geom_point() +
+	geom_line(aes(y=fit), color="red") +
+	geom_line(aes(y=HVGenes), color="blue") +
 	theme_bw() +
-	labs(x = "log(mean expression)", y="squared coefficient of variation")+
-	ggtitle(paste(length(varGenes), " selected genes (bin=", binNb,", zScore=", zScore,")", sep="")) +
+	labs(x = "Mean expression (log10)", y="CV2 (log10)")+
+	ggtitle(paste(length(HVGenes), " selected genes (", fitThr,"*glmgam.fit)", sep="")) +
 	theme(
 		axis.text=element_text(size=16),
 		axis.title=element_text(size=16),
@@ -98,10 +96,13 @@ getMostVarGenes <- function(data=data,binNb=binNb,zScore=zScore){
 		values=c("#595959","#5a9ca9")
 	)
 	print(p)
-	return(varGenes)
+
+	males_data <- data_no0[rownames(data_no0) %in% names(HVGenes),]
+	print(nrow(males_data))
+
+	return(males_data)
+
 }
-
-
 
 ###########################################
 #                                         #
@@ -112,10 +113,10 @@ getMostVarGenes <- function(data=data,binNb=binNb,zScore=zScore){
 run_tSNE <- function(pca=pca, pc=pc, iter=2000, perplexity=0){
 	set.seed(1)
 	if (perplexity>0){
-			rtsne_out <- Rtsne(pca$x[,pc] , pca=FALSE, max_iter=iter, verbose=TRUE, perplexity=perplexity)
+			rtsne_out <- Rtsne(pca$ind$coord[,pc] , pca=FALSE, max_iter=iter, verbose=TRUE, perplexity=perplexity)
 
 		} else {
-			rtsne_out <- Rtsne(pca$x[,pc] , pca=FALSE, max_iter=iter, verbose=TRUE)
+			rtsne_out <- Rtsne(pca$ind$coord[,pc] , pca=FALSE, max_iter=iter, verbose=TRUE)
 
 		}
 	tSNE <- data.frame(
@@ -124,40 +125,43 @@ run_tSNE <- function(pca=pca, pc=pc, iter=2000, perplexity=0){
 	return(tSNE)
 }
 
-plot_tSNE <- function(pca=pca, pc=pc, iter=2000, conditions=conditions, colours=colours, perplexity=0){
-	tsne <- run_tSNE(
-		pca, 
-		1:pc, 
-		iter,  
-		perplexity
-	)
+
+plot_tSNE <- function(tsne=tsne, conditions=conditions, colours=colours){
+
 	tSNE <- data.frame(
-		tsne,
-		conditions
+		tSNE_1=tsne[,1],
+		tSNE_2=tsne[,2],
+		c(conditions)
 	)
+
 	colnames(tSNE)<- c("tSNE_1", "tSNE_2", "cond")
-	g<-ggplot(tSNE, aes(tSNE_1,tSNE_2)) +
+
+	print(head(tSNE))
+
+
+	g<-ggplot(tSNE, aes(tSNE_1, tSNE_2)) +
 	geom_point(shape = 21, size = 2.5, stroke=0.5, aes(fill=cond, color=cond),alpha=6/10) +
 	theme_bw() +
 	scale_fill_manual(
 		values=colours,
 		name=""
-		) +
-		scale_color_manual(
-			values=colours,
-			name=""
-		) +
-	ggtitle(paste("t-SNE plot (", pc," PCs)", sep="")) +
+	) +
+	scale_color_manual(
+		values=colours,
+		name=""
+	) +
+	# ggtitle(paste("t-SNE plot (", pc," PCs)", sep="")) +
 	theme(
 		axis.text=element_text(size=16),
 		axis.title=element_text(size=16),
 		legend.text = element_text(size =16),
 		legend.title = element_text(size =16 ,face="bold"),
 		plot.title = element_text(size=18, face="bold", hjust = 0.5),
-		aspect.ratio=1
+		aspect.ratio=1,
+		legend.position="none"
 	)
 	print(g)
-	return(tsne)
+	# return(tsne)
 }
 
 
@@ -234,8 +238,8 @@ plot_pca <- function(pca=pca, pc=pc, conditions=conditions, colours=colours){
 					legend.text = element_text(size =16),
 					legend.title = element_text(size =16 ,face="bold"),
 					plot.title = element_text(size=18, face="bold", hjust = 0.5),
-					aspect.ratio=1#,
-					# legend.position="none"
+					aspect.ratio=1,
+					legend.position="top"
 				)
 				print(p1)
 			}
@@ -351,6 +355,36 @@ plot_clusters <- function(tsne=tsne, dist=3.5){
 #                                         #
 ###########################################
 
+prepare_for_monocle <- function(count_matrix=count_matrix, stages=stages){
+	# Prepare tables for monocle object
+	expr_matrix <- as.matrix(count_matrix)
+	sample_sheet <- data.frame(cells=names(count_matrix), stages=stages)
+	rownames(sample_sheet)<- names(count_matrix)
+	gene_annotation <- as.data.frame(rownames(count_matrix))
+	rownames(gene_annotation)<- rownames(count_matrix)
+	colnames(gene_annotation)<- "genes"
+	pd <- new("AnnotatedDataFrame", data = sample_sheet)
+	fd <- new("AnnotatedDataFrame", data = gene_annotation)
+
+	# Create a CellDataSet from the relative expression levels
+	HSMM <- newCellDataSet(
+		as(expr_matrix, "sparseMatrix"),
+		phenoData = pd,
+		featureData = fd,
+		lowerDetectionLimit=0.5,
+		expressionFamily=negbinomial.size()
+	)
+	
+	HSMM <- detectGenes(HSMM, min_expr = 5)
+	# HSMM <- HSMM[fData(HSMM)$num_cells_expressed > 5, ]
+	HSMM <- HSMM[fData(HSMM)$num_cells_expressed > 10, ]
+
+	HSMM <- estimateSizeFactors(HSMM)
+	HSMM <- estimateDispersions(HSMM)
+
+	return(HSMM)
+}
+
 
 prepare_for_DE <- function(count_matrix=count_matrix, clustering=clustering, stages=stages){
 	# Prepare tables for monocle object
@@ -420,11 +454,15 @@ get_up_reg_clusters <- function(count, clustering, DE_genes){
 	count_de_genes <- count[rownames(count) %in% DE_genes$genes,]
 
 	for (clusters in cluster_nb) {
-		mean <- rowMeans(
-				count_de_genes[,
+		print(head(count_de_genes[,
 				colnames(count_de_genes) %in% names(clustering[clustering==clusters])
-			]
+			]))
+		mean <- rowMeans(
+			as.matrix(count_de_genes[,
+				colnames(count_de_genes) %in% names(clustering[clustering==clusters])
+			])
 		)
+		names(mean) <- clusters
 		mean_per_cluster <- cbind(
 			mean_per_cluster,
 			mean
@@ -434,6 +472,7 @@ get_up_reg_clusters <- function(count, clustering, DE_genes){
 	up_reg_cluster <- colnames(mean_per_cluster)[apply(mean_per_cluster,1,which.max)]
 	de_genes_table <- data.frame(
 		DE_genes,
+		mean_per_cluster,
 		cluster=up_reg_cluster
 	)
 
@@ -488,27 +527,66 @@ plot_heatmap <- function(matrix=matrix, clusters=clusters, stages=stages){
 }
 
 
-plot_heatmap_2 <- function(matrix=matrix, conditions=conditions){
-	cond <- factor(conditions)
-	colours <- all_clusterPalette <- rainbow(length(unique(conditions)))
-
-	colours <- colours[1:length(unique(cond))]
-	col <- factor(cond)
-	levels(col) <- colours
-	col <- as.vector(col)
-	hmcol = viridis(100)
-	heatmap.2(
-		matrix, 
-		scale='none', 
-		trace="none",
-		Colv=FALSE,
-		keysize = 1, 
-		col = hmcol, 
-		ColSideColors = col, 
+plot_heatmap_2 <- function(matrix=matrix, clusters=clusters, stages=stages, rowbreaks, colbreaks, rowanno){
+	annotation_col <- data.frame(
+		Cell_Clusters=clusters,
+		Stages=stages
 	)
 
-	par(xpd=TRUE, mar=c (5.1, 4, 4, 3))
-	legend("topleft", inset=c(-0.1,0.1),legend=levels(cond),fill=colours)
+
+	cell_cluster_palette <- c(
+		"#457cff", 
+		"#aeff01", 
+		"#00c5ec", 
+		"#009900",  
+		"#a38cff",
+		"#8dfaff"
+	)
+
+	cell_cluster_colors <- cell_cluster_palette[1:length(unique(clusters))]
+	names(cell_cluster_colors) <- unique(clusters)
+
+
+	annotation_colors <- list(
+		Stages=c(
+			# P6="#d73027", 
+			E10.5="#2754b5", 
+			E11.5="#8a00b0", 
+			E12.5="#d20e0f", 
+			E13.5="#f77f05", 
+			E16.5="#f9db21"
+		),
+		Cell_Clusters=cell_cluster_colors
+	)
+
+	row_annotation <- rowanno$cellType
+	names(row_annotation) <- rowanno$gene
+
+	# Color palette for the heatmap
+	cold <- colorRampPalette(c('#f7fcf0','#41b6c4','#253494','#081d58', '#081d58'))
+	warm <- colorRampPalette(c('#ffffb2','#fecc5c','#e31a1c','#800026'))
+	mypalette <- c(rev(cold(20)), warm(20))
+	# mypalette <- c(rev(cold(15)), warm(16))
+	breaksList = seq(0, 5, by = 0.5)
+
+
+	pheatmap(
+		matrix, 
+		# scale="row",
+		show_colnames=FALSE, 
+		# show_rownames=FALSE, 
+		cluster_cols=FALSE,
+		# cluster_rows=FALSE,
+		clustering_method="ward.D2",
+		annotation_col=annotation_col,
+		annotation_row=row_annotation,
+		annotation_colors=annotation_colors,
+		color=viridis(10),
+		# gaps_row=rowbreaks,
+		gaps_col=colbreaks,
+		border_color = FALSE
+		# breaks=breaksList
+	)
 }
 
 
@@ -595,15 +673,6 @@ plot_dm_3D <- function(dm=dm, dc=c(1:3), condition=condition, colours=colours){
 		size=6.5,
 		box = FALSE
 	)
-
-	legend3d("topright", legend = unique(condition), pch = 21, pt.bg = unique(col), cex=1.5, inset=c(0.02), bty = "n")
-
-	plot3d(
-		data,
-		size=7.5,
-		add = TRUE
-	)
-
 }
 
 
@@ -653,7 +722,11 @@ get_lineage <- function(dm=dm, dim=c(0:20), condition=condition, start=start, en
 		data, 
 		condition, 
 		start.clus = start, 
-		end.clus=end
+		end.clus=end,
+		maxit=1000,
+		# shrink.method="cosine",
+		shrink.method="tricube",
+		drop.multi=FALSE
 	)
 
 	return(crv)
@@ -742,77 +815,6 @@ plot_gene_per_lineage <- function(
 
 	}
 
-
-	#
-	# Old plot I keep for record in case I need it
-	#
-
-	# p <- ggplot(pseudotime_data, aes(x=pseudotime, y=gene))+
-	# scale_shape_manual(values = 21:25) +
-	# geom_point(size = 3, stroke=0.7, aes(shape=condition1, fill=condition2), color="white", na.rm = TRUE)+
-	# geom_smooth(color="black", na.rm = TRUE, method="loess", span=0.75)+
-	# ylab("log(RPKM+1)") +
-	# theme_bw() +
-	# ggtitle(geneName)+
-	# # scale_color_manual(
-	# # 	values=colours
-	# # ) +
-	# scale_fill_manual(
-	# 	values=colours
-	# ) +
-	# guides(
-	# 	fill = guide_legend(override.aes = list(color=colours, fill=colours))
- #    ) +
-	# theme(
-	# 	axis.text=element_text(size=16),
-	# 	axis.title=element_text(size=16),
-	# 	legend.text = element_text(size =16),
-	# 	legend.title=element_blank(),
-	# 	plot.title = element_text(size=18, face="bold.italic", hjust = 0.5),
-	# 	aspect.ratio=0.5#,
-	# 	# legend.position="bottom"
-	# ) +
-	# facet_grid(.~lineage) +
-	# theme(
-	# 	strip.text.x = element_text(size = 16)
-	# )
-
-	# pseudotime_data[pseudotime_data=="Lineage 1"] <- "Sertoli lineage"
-	# pseudotime_data[pseudotime_data=="Lineage 2"] <- "Leydig lineage"
-	# pseudotime_data[pseudotime_data=="Lineage 3"] <- "Progenitor lineage"
-
-	# p <- ggplot(pseudotime_data, aes(x=pseudotime, y=gene))+
-	# # geom_point(shape=21, size = 3, stroke=0.7, aes(fill=clusters), color="white", na.rm = TRUE)+
-	# # geom_point(shape=108, size = 8,  aes(y=-1, color=stages), na.rm = TRUE)+
-	# # geom_smooth(color="black", na.rm = TRUE, method="loess", span=0.75)+
-	# geom_smooth(aes(group=lineage, color=lineage, fill=lineage), na.rm = TRUE, method="loess", span=0.5)+
-	# ylab("log(RPKM+1)") +
-	# theme_bw() +
-	# ggtitle(geneName)+
-	# scale_color_manual(
-	# 	values=cluster_colors
-	# ) +
-	# scale_fill_manual(
-	# 	values=cluster_colors
-	# ) +
-	# # ylim(0, max(pseudotime_data$gene))+
-	# # guides(
-	# # 	fill = guide_legend(override.aes = list(color=colours, fill=colours))
- # #    ) +
-	# theme(
-	# 	axis.text=element_text(size=16),
-	# 	axis.title=element_text(size=16),
-	# 	legend.text = element_text(size =16),
-	# 	legend.title=element_blank(),
-	# 	plot.title = element_text(size=18, face="bold.italic", hjust = 0.5),
-	# 	aspect.ratio=0.5,
-	# 	legend.position="bottom"
-	# ) +
-	# # facet_grid(.~lineage) +
-	# theme(
-	# 	strip.text.x = element_text(size = 16)
-	# )
-
 	p <- ggplot(pseudotime_data, aes(x=pseudotime, y=gene))+
 	geom_point(shape=21, size = 2.5, stroke=0.5, aes(fill=clusters), color="white", na.rm = TRUE)+
 	geom_point(shape=108, size = 4,  aes(y=-1, color=stages), na.rm = TRUE)+
@@ -841,6 +843,156 @@ plot_gene_per_lineage <- function(
 	)
 	print(p)
 }
+
+
+plot_smoothed_gene_per_lineage <- function(
+	rpkm_matrix=rpkm_matrix, 
+	pseudotime=pseudotime, 
+	lin=lin,
+	geneName=geneName, 
+	stages=stages, 
+	clusters=clusters, 
+	stage_colors=stage_colors,
+	cluster_colors=cluster_colors,
+	lineage_colors=lineage_colors
+	){
+
+	pseudotime <- pseudotime[,lin]
+
+	lineage_colors <- lineage_colors[lin]
+
+	myplots <- list()
+	total_pseudotime <- vector()
+
+	if (length(lin)==1){
+
+		lineage <- pseudotime
+		total_pseudotime <- c(total_pseudotime, lineage)
+		total_pseudotime <- na.omit(total_pseudotime)
+		max_exp <- max(log(rpkm_matrix[rownames(rpkm_matrix) %in% geneName,]+1))
+		max_pseudotime <- max(total_pseudotime)
+
+		pseudotime_data <- data.frame(
+			pseudotime=numeric(),
+			lineage=numeric(),
+			stages=character(),
+			clusters=character(),
+			gene=numeric()
+		)
+
+
+		lineage <- pseudotime
+		sub_data <- log(rpkm_matrix[rownames(rpkm_matrix) %in% geneName,]+1)
+
+		data <- data.frame(
+			pseudotime=lineage,
+			lineage=paste("Lineage ",lin, sep=""),
+			stages=stages,
+			clusters=clusters,
+			gene=t(sub_data)
+		)
+
+		colnames(data) <- c("pseudotime", "lineage", "stages", "clusters", "gene")
+
+		# print(lin)
+
+		pseudotime_data <- rbind(pseudotime_data, data)
+
+		p <- ggplot(pseudotime_data, aes(x=pseudotime, y=gene))+
+		geom_point(shape=21, size = 1.5,  aes(fill=clusters), color="white", na.rm = TRUE)+
+		geom_point(shape=108, size = 6,  aes(y=-1, color=stages), na.rm = TRUE)+
+		geom_smooth(color="black", na.rm = TRUE, method="loess", span=0.5)+
+		ylab("log(RPKM+1)") +
+		theme_bw() +
+		ggtitle(geneName)+
+		# scale_color_manual(
+		# 	values=cluster_colors
+		# ) +
+		scale_fill_manual(
+			values=cluster_colors
+		) +
+		scale_color_manual(
+			values=stage_colors
+		) +
+		expand_limits(y = c(0,2))+
+		theme(
+			axis.text=element_text(size=16),
+			axis.title=element_text(size=16),
+			legend.text = element_text(size =16),
+			legend.title=element_blank(),
+			plot.title = element_text(size=18, face="bold.italic", hjust = 0.5),
+			aspect.ratio=0.5,
+			legend.position="bottom",
+			strip.text.x = element_text(size = 16)
+		)
+
+
+	} else {
+
+		for (lineages in 1:ncol(pseudotime)){
+			lineage <- as.vector(pseudotime[,lineages])
+			total_pseudotime <- c(total_pseudotime, lineage)
+			total_pseudotime <- na.omit(total_pseudotime)
+		}
+	
+		max_exp <- max(log(rpkm_matrix[rownames(rpkm_matrix) %in% geneName,]+1))
+		max_pseudotime <- max(total_pseudotime)
+
+		pseudotime_data <- data.frame(
+			pseudotime=numeric(),
+			lineage=numeric(),
+			stages=character(),
+			clusters=character(),
+			gene=numeric()
+		)
+
+
+		for (lineages in 1:ncol(as.data.frame(pseudotime))){
+			lineage <- pseudotime[,lineages]
+			sub_data <- log(rpkm_matrix[rownames(rpkm_matrix) %in% geneName,]+1)
+
+			data <- data.frame(
+				pseudotime=lineage,
+				lineage=paste("Lineage ",lineages, sep=""),
+				stages=stages,
+				clusters=clusters,
+				gene=t(sub_data)
+			)
+
+			colnames(data) <- c("pseudotime", "lineage", "stages", "clusters", "gene")
+
+			pseudotime_data <- rbind(pseudotime_data, data)
+		}
+
+		p <- ggplot(pseudotime_data, aes(x=pseudotime, y=gene))+
+		geom_smooth(aes(group=lineage, color=lineage, fill=lineage), na.rm = TRUE, method="loess", span=0.5)+
+		ylab("log(RPKM+1)") +
+		theme_bw() +
+		ggtitle(geneName)+
+		scale_color_manual(
+			values=lineage_colors
+		) +
+		scale_fill_manual(
+			values=lineage_colors
+		) +
+		expand_limits(y = c(0,2))+
+		theme(
+			axis.text=element_text(size=16),
+			axis.title=element_text(size=16),
+			legend.text = element_text(size =16),
+			legend.title=element_blank(),
+			plot.title = element_text(size=18, face="bold.italic", hjust = 0.5),
+			aspect.ratio=0.5,
+			legend.position="bottom",
+			strip.text.x = element_text(size = 16)
+		)
+
+	}
+
+	print(p)
+}
+
+
 
 
 compare_lineage <- function(pseudotime=pseudotime, condition=condition){
@@ -904,7 +1056,7 @@ get_var_genes_pseudotime <- function(rpkm, count, pseudotime, lineageNb, cluster
 
 	DE_genes_pseudoT <- differentialGeneTest(
 		genes_pseudoT, 
-		fullModelFormulaStr="~sm.ns(Pseudotime, df=4)",
+		fullModelFormulaStr="~sm.ns(Pseudotime, df=3)",
 		cores = 3
 	)
 	print("Done.")
@@ -926,37 +1078,30 @@ get_gene_clustering <- function(DE_genes_pseudoT, rpkm, pseudotime, lineageNb, c
 
 	print("Smooth gene expression...")
 	smooth <- smooth_gene_exp(
-		sig_var_gene_pseudoT, 
+		log(sig_var_gene_pseudoT+1), 
 		lineage, 
 		span=0.5
 	)
 	print("Done.")
 
-	# Color palette for the heatmap
-	cold <- colorRampPalette(c('#f7fcf0','#41b6c4','#253494','#081d58', '#081d58'))
-	warm <- colorRampPalette(c('#ffffb2','#fecc5c','#e31a1c','#800026'))
-	mypalette <- c(rev(cold(20)), warm(20))
-
 	smooth <- smooth[ , order(lineage)]
 
 	print("Cluster the genes...")
 
-	cell_cluster_palette <- c(
-		"#457cff", 
-		# "#8ae400", 
-		"#00c5ec", 
-		"#009900", 
-		"#8dfaff"
+	cell_cluster_colors <- c(
+		C1="#a38cff" , # leyd
+		C2="#aeff01", # preS
+		C3="#00c5ec", # endo
+		C4="#009900", # sert
+		C5="#457cff", # prog
+		C6="#8dfaff" # leyd
 	)
-
-	cell_cluster_colors <- cell_cluster_palette[1:length(unique(clusters_in_lineage))]
-	names(cell_cluster_colors) <- unique(clusters_in_lineage)
 
 	gene_clustering <- pheatmap(
 		smooth, 
 		scale="row", 
 		cutree_rows=clusterNb,
-		clustering_method="ward.D2",
+		clustering_method="ward.D",
 		silent=TRUE
 	)
 
@@ -992,6 +1137,13 @@ get_gene_clustering <- function(DE_genes_pseudoT, rpkm, pseudotime, lineageNb, c
 		Gene_Clusters=gene_cluster_colors
 	)
 
+	# Color palette for the heatmap
+	cold <- colorRampPalette(c('#f7fcf0','#41b6c4','#253494','#081d58', '#081d58'))
+	warm <- colorRampPalette(c('#ffffb2','#fecc5c','#e31a1c','#800026'))
+	mypalette <- c(rev(cold(20)), warm(21))
+	# mypalette <- c(rev(cold(15)), warm(16))
+	breaksList = seq(-10, 10, by = 0.5)
+
 	pheatmap(
 		smooth, 
 		scale="row", 
@@ -999,7 +1151,7 @@ get_gene_clustering <- function(DE_genes_pseudoT, rpkm, pseudotime, lineageNb, c
 		show_colnames=FALSE, 
 		show_rownames=FALSE, 
 		cutree_rows=clusterNb, 
-		clustering_method="ward.D2",
+		clustering_method="ward.D",
 		annotation_col=annotation_col,
 		annotation_row=annotation_row,
 		annotation_colors=annotation_colors,
